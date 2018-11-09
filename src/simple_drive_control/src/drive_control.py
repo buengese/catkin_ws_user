@@ -12,9 +12,9 @@ from std_msgs.msg import String
 # --- definitions ---
 epsilon = 0.05   # allowed inaccuracy for distance calculation
 speed_rpm = 200
-angle_left = 30
-angle_straight = 90
-angle_right = 150
+angle_left = 40
+angle_straight = 100
+angle_right = 160
 last_odom = None
 is_active = False
 
@@ -146,7 +146,7 @@ pub_stop_start = rospy.Publisher(
     "manual_control/stop_start",
     Int16,
     queue_size=100)
-pub_speed = rospy.Publisher("manual_control/speed", Int16, queue_size=100)
+pub_speed = rospy.Publisher("/speed", Int16, queue_size=100)
 pub_steering = rospy.Publisher(
     "steering",
     UInt8,
