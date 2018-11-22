@@ -4,6 +4,7 @@ import roslib
 import sys
 import rospy
 import cv2
+import math
 import numpy as np
 from std_msgs.msg import String
 from geometry_msgs.msg import Pose
@@ -54,7 +55,7 @@ class image_converter:
     for i in range (0,220):
         for j in range(0,320):
                   if (thresh1[i,j] >= 200):
-                      image_points[0,0]=j
+                      image_points[0,0]=j #
                       image_points[0,1]=i
 
 
@@ -116,14 +117,33 @@ class image_converter:
     # far to close, left to right (order of discovery) in cm
     obj_points = np.zeros((6,3,1))
     obj_points[:,:,0] = np.array([[0, 0, 0],
-                                  [21.8, 0, 0],
+                                  [41.7, 0, 0],
+                                  [0, 58.3, 0],
+                                  [40.0, 30.0, 0],
                                   [0, 30.0, 0],
-                                  [22.2, 30.0, 0],
-                                  [0, 60.0, 0],
-                                  [22.0, 60.0, 0]])
+                                  [40.0, 58.4, 0]])
     retval, rvec, tvec = cv2.solvePnP(obj_points, image_points,camera_mat, dist_coeffs)
     print 'rvec \n' , rvec
     print 'tvec \n' , tvec
+
+    rmat = cv2.Rodrigues(rvec)[0]
+    print 'rmat \n' , rmat
+    inv_rmat = rmat.transpose()
+    print 'inv_rmat \n' , inv_rmat
+    inv_rmat_ = np.negative(inv_rmat)
+    inv_tvec = inv_rmat_.dot(tvec)
+    print 'inv_tvec \n' , inv_tvec
+    sy = math.sqrt(rmat[0,0] * rmat[0,0] +  rmat[1,0] * rmat[1,0]);
+    singular = sy < 1e-6; # If
+    if (~singular):
+         x = math.atan2(-rmat[2,1] , rmat[2,2]);
+         y = math.atan2(-rmat[2,0], sy);
+         z = math.atan2(rmat[1,0], rmat[0,0]);
+    else:
+         x = math.atan2(-rmat[1,2], rmat[1,1]);
+         y = math.atan2(-rmat[2,0], sy);
+         z = 0;
+    print 'x,y,z', inv_tvec[0]/100, inv_tvec[1]/100, inv_tvec[2]/100
 
 
 def main(args):
