@@ -126,7 +126,7 @@ def scan_callback(scan_msg):
 
     if len(lines) < 3:
     	if len(lines) == 0:
-    		initial_line = LineInfo(slope1, intercept1, wall1_dist, slope2, intercept2, wall1_dist, scan_msg.header.stamp)
+    		initial_line = LineInfo(slope1, intercept1, wall1_dist, slope2, intercept2, wall2_dist, scan_msg.header.stamp)
     		lines.append(initial_line)
     		pub_steering.publish(UInt8(0))
     		pub_speed.publish(-150)
