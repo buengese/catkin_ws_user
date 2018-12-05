@@ -20,13 +20,15 @@ sample_count = 50  # number RANSAC samples to take
 wall1_angle = np.pi / 2
 wall2_angle = 0
 
-plotting = False  # whether to plot output
+plotting = True  # whether to plot output
 
 pub_steering = rospy.Publisher('/steering', UInt8, queue_size=100, latch=True)
 pub_speed = rospy.Publisher('/speed', Int16, queue_size=100, latch=True)
 
 LineInfo = namedtuple('LineInfo', ['slope1', 'intercept1', 'wall_dist1', 'slope2', 'intercept2', 'wall_dist2', 'stamp'])
 lines = []
+dists1 = []
+dists2 = []
 
 if plotting:
     ax_a, ax_b = plt.subplots(1, 2, figsize=(16, 7), facecolor='w')[1]
@@ -126,15 +128,36 @@ def scan_callback(scan_msg):
 
     if len(lines) < 3:
     	if len(lines) == 0:
-    		initial_line = LineInfo(slope1, intercept1, wall1_dist, slope2, intercept2, wall2_dist, scan_msg.header.stamp)
-    		lines.append(initial_line)
+    		if dists1 <= 10:
+    			dists1.append(wall1_dist)
+    			dists2.append(wall2_dist)
+    		line = LineInfo(slope1, intercept1, numpy.mean(wall1_dist), slope2, intercept2, numpy.mean(wall2_dist), scan_msg.header.stamp)
+    		lines.append(line)
     		pub_steering.publish(UInt8(0))
     		pub_speed.publish(-150)
-    	else:
-    		time_diff = scan_msg.header.stamp - lines[len(lines) - 1].stamp
-    		if time_diff.secs >= 2.0:
-    			line = LineInfo(slope1, intercept1, wall1_dist, slope2, intercept2, wall2_dist, scan_msg.header.stamp)
-    			lines.append(line)
+    	if len(lines) == 1:
+    		time_diff = scan_msg.header.stamp - lines[0].stamp
+    		if time_diff.secs > 5:
+    			pub_speed.publish(0)
+    		dists1.clear()
+    		dists2.clear()
+    		if dists1 <= 10:
+    			dists1.append(wall1_dist)
+    			dists2.append(wall2_dist)
+    		line = LineInfo(slope1, intercept1, numpy.mean(wall1_dist), slope2, intercept2, numpy.mean(wall2_dist), scan_msg.header.stamp)
+    		lines.append(line)
+    		pub_speed.publish(-150)
+    	if len(lines) == 2:
+    		time_diff = scan_msg.header.stamp - lines[1].stamp
+    		if time_diff.secs > 5:
+    			pub_speed.publish(0)
+    		dists1.clear()
+    		dists2.clear()
+    		if dists1 <= 10:
+    			dists1.append(wall1_dist)
+    			dists2.append(wall2_dist)
+    		line = LineInfo(slope1, intercept1, numpy.mean(wall1_dist), slope2, intercept2, numpy.mean(wall2_dist), scan_msg.header.stamp)
+    		lines.append(line)
     if len(lines) == 3:
     	pub_speed.publish(0)
     	for line in lines:
