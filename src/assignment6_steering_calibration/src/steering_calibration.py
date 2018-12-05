@@ -137,7 +137,10 @@ def scan_callback(scan_msg):
     			lines.append(line)
     if len(lines) == 3:
     	pub_speed.publish(0)
-    	print lines
+    	for line in lines:
+    		print line
+    	rospy.signal_shutdown("Blub")
+
 
     if plotting:
         ax_a.cla()
