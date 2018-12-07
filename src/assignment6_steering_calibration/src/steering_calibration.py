@@ -9,26 +9,29 @@ import rospy
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Int16, UInt8, UInt16
 from collections import namedtuple
+from sympy import Symbol, nonlinsolve
 
 from time import localtime, strftime
 
 mask_angles = True  # whether to mask any angle that's not on the right side of the car
 
-inlier_dist = 0.05  # max distance for inliers (in meters) since walls are very flat this can be low
+inlier_dist = 0.02  # max distance for inliers (in meters) since walls are very flat this can be low
 sample_count = 50  # number RANSAC samples to take
+steering_angle = 0 
 
 wall1_angle = np.pi / 2
 wall2_angle = 0
 
 plotting = True  # whether to plot output
 
+offline = True
+start = False
+
 pub_steering = rospy.Publisher('/steering', UInt8, queue_size=100, latch=True)
 pub_speed = rospy.Publisher('/speed', Int16, queue_size=100, latch=True)
 
 LineInfo = namedtuple('LineInfo', ['slope1', 'intercept1', 'wall_dist1', 'slope2', 'intercept2', 'wall_dist2', 'stamp'])
 lines = []
-dists1 = []
-dists2 = []
 
 if plotting:
     ax_a, ax_b = plt.subplots(1, 2, figsize=(16, 7), facecolor='w')[1]
@@ -85,22 +88,25 @@ def find_best_params(points):
     return slope, intercept
 
 def scan_callback(scan_msg):
-    global initial_line, wall1_angle, wall2_angle, add_pi, last_theta, speed, speed_value, max_y,steering_angle_feedback,invert_sign_gamma
+    global wall1_angle, wall2_angle
 
     radius = np.asarray(scan_msg.ranges)
     angles = np.arange(scan_msg.angle_min, scan_msg.angle_max + scan_msg.angle_increment / 2, scan_msg.angle_increment)
     angles = angles - np.pi/2 # rotate by 90 degrees to get axis correct
+    angles[angles < 0] = (2 * np.pi) + angles[angles < 0]
 
     mask_fin = np.isfinite(radius)  # only consider finite radii
 
-    angle_spread = np.pi / 4  # size of cone to consider
+    # Try to fit the lines with ransac and get the distance
+
+    angle_spread_method1 = np.pi / 4  # size of cone to consider
 
     # Find the front wall
-    mask_angle1 = np.logical_and((wall1_angle + angle_spread) > angles, angles > (wall1_angle - angle_spread))
+    mask_angle1 = np.logical_and((wall1_angle + angle_spread_method1) > angles, angles > (wall1_angle - angle_spread_method1))
     mask_front = np.logical_and(mask_fin, mask_angle1)
 
     # Find the right wall
-    mask_angle2 = np.logical_and((wall2_angle + angle_spread) > angles, angles > (wall2_angle - angle_spread))
+    mask_angle2 = np.logical_and((wall2_angle + angle_spread_method1) > angles, angles > (wall2_angle - angle_spread_method1))
     mask_right = np.logical_and(mask_fin, mask_angle2)
 
     masked_angles_right = angles[mask_right]
@@ -110,61 +116,50 @@ def scan_callback(scan_msg):
     # calculate coordinates of our masked values
     x = np.cos(masked_angles_right) * masked_radius_right
     y = np.sin(masked_angles_right) * masked_radius_right
-
     points_right = np.column_stack((x, y))
 
     x = np.cos(masked_angles_front) * masked_radius_front
     y = np.sin(masked_angles_front) * masked_radius_front
     points_front = np.column_stack((x, y))
 
-    slope1, intercept1 = find_best_params(points_right)  # detect a line in these coordinates
-    slope2, intercept2 = find_best_params(points_front)
+    slope1, intercept1 = find_best_params(points_front)  # detect a line in these coordinates
+    slope2, intercept2 = find_best_params(points_right)
 
-    #wall1_angle = np.arctan(slope1)  # angle of the wall
-    wall1_dist = abs(intercept1)/pow(pow(slope1,2)+1.0,0.5)  # shortest distance from current position to the wall
-    #wall2_angle = np.arctan(slope2)
-    wall2_dist = abs(intercept2)/pow(pow(slope2,2)+1.0,0.5)
-    print "dist1, dist2", wall1_dist, wall2_dist
+    wall1_dist_method1 = abs(intercept1)/pow(pow(slope1,2)+1.0,0.5)  # shortest distance from current position to the wall
+    wall2_dist_method1 = abs(intercept2)/pow(pow(slope2,2)+1.0,0.5)
 
-    if len(lines) < 3:
-    	if len(lines) == 0:
-    		if dists1 <= 10:
-    			dists1.append(wall1_dist)
-    			dists2.append(wall2_dist)
-    		line = LineInfo(slope1, intercept1, numpy.mean(wall1_dist), slope2, intercept2, numpy.mean(wall2_dist), scan_msg.header.stamp)
-    		lines.append(line)
-    		pub_steering.publish(UInt8(0))
-    		pub_speed.publish(-150)
-    	if len(lines) == 1:
-    		time_diff = scan_msg.header.stamp - lines[0].stamp
-    		if time_diff.secs > 5:
-    			pub_speed.publish(0)
-    		dists1.clear()
-    		dists2.clear()
-    		if dists1 <= 10:
-    			dists1.append(wall1_dist)
-    			dists2.append(wall2_dist)
-    		line = LineInfo(slope1, intercept1, numpy.mean(wall1_dist), slope2, intercept2, numpy.mean(wall2_dist), scan_msg.header.stamp)
+    if len(lines) == 0:
+    	print "Pos1"
+    	line = LineInfo(slope1, intercept1, wall1_dist_method1, slope2, intercept2, wall2_dist_method1, scan_msg.header.stamp)
+    	lines.append(line)
+    	pub_steering.publish(steering_angle)
+    	pub_speed.publish(-150)
+    if len(lines) == 1:
+    	time_diff = scan_msg.header.stamp - lines[0].stamp
+    	if time_diff.secs > 1:
+    		print "Pos2"
+    		pub_speed.publish(0)
+    		line = LineInfo(slope1, intercept1, wall1_dist_method1, slope2, intercept2, wall2_dist_method1, scan_msg.header.stamp)
     		lines.append(line)
     		pub_speed.publish(-150)
-    	if len(lines) == 2:
-    		time_diff = scan_msg.header.stamp - lines[1].stamp
-    		if time_diff.secs > 5:
-    			pub_speed.publish(0)
-    		dists1.clear()
-    		dists2.clear()
-    		if dists1 <= 10:
-    			dists1.append(wall1_dist)
-    			dists2.append(wall2_dist)
-    		line = LineInfo(slope1, intercept1, numpy.mean(wall1_dist), slope2, intercept2, numpy.mean(wall2_dist), scan_msg.header.stamp)
-    		lines.append(line)
-    if len(lines) == 3:
-    	pub_speed.publish(0)
-    	for line in lines:
-    		print line
-    	rospy.signal_shutdown("Blub")
-
-
+    if len(lines) == 2:
+    	time_diff = scan_msg.header.stamp - lines[1].stamp
+    	if time_diff.secs > 1:
+    		print "Pos3"
+    		pub_speed.publish(0)
+    		line = LineInfo(slope1, intercept1, wall1_dist_method1, slope2, intercept2, wall2_dist_method1, scan_msg.header.stamp)
+    		x0 = Symbol('x0')
+    		y0 = Symbol('y0')
+    		r = Symbol('r')
+    		eq1 = (lines[0].wall_dist2 - x0)**2 + (lines[0].wall_dist1 - y0)**2 - r**2
+    		eq2 = (lines[1].wall_dist2 - x0)**2 + (lines[1].wall_dist1 - y0)**2 - r**2
+    		eq3 = (line.wall_dist2 - x0)**2 + (line.wall_dist1 - y0)**2 - r**2
+    		result = nonlinsolve([eq1, eq2, eq3], [x0, y0, r])
+    		radius = float(result.args[0][2])
+    		print "Radius: ", radius
+    		angle = np.arctan(0.26/radius)
+    		print "Angle: ", angle
+    		rospy.signal_shutdown('stop')
     if plotting:
         ax_a.cla()
         ax_a.set_title('Scatter plot of laser scan data')
@@ -173,9 +168,14 @@ def scan_callback(scan_msg):
         inlier_mask1 = get_inliers(points_right, slope1, intercept1)
         inlier_mask2 = get_inliers(points_front, slope2, intercept2)
         #ax_a.scatter(*points_right[np.where(inlier_mask1)].T, color='r')
-        ax_a.scatter(*points_front[np.where(inlier_mask2)].T, color='g')
+        ax_a.scatter(*points_front.T, color='g')
+        #ax_a.scatter(*points_front[np.where(inlier_mask2)].T, color='g')
         #ax_a.scatter(*points_right[np.where(np.logical_not(inlier_mask1))].T, color='b')
         #ax_a.scatter(*points_front[np.where(np.logical_not(inlier_mask2))].T, color='b')
+
+        #x = np.cos(angles) * radius
+       # y = np.sin(angles) * radius
+       # ax_a.scatter(x, y, color='k')
 
         # plot any filtered points
         inv_mask = np.logical_not(np.logical_and(mask_right, mask_front))
@@ -194,7 +194,7 @@ def scan_callback(scan_msg):
 
         line2_x = np.linspace(-plt_window, plt_window, 10)
         line2_y = intercept2 + line2_x * slope2
-        ax_a.plot(line2_x, line2_y, color='b')
+        ax_a.plot(line2_x, line2_y, color='g')
 
         # draw coordinate system
         ax_a.axvline(0, color='k')
@@ -203,10 +203,9 @@ def scan_callback(scan_msg):
         rospy.sleep(0.1)  # sleep to avoid threading issues with plotting
 
 def main(args):
-    rospy.init_node("angle_calibration")
+    rospy.init_node("angle_calibration1")
     rospy.Subscriber("/scan", LaserScan, scan_callback, queue_size=1)
-    #rospy.Subscriber("/steering_angle", UInt16, steering_feedback_callback, queue_size=1)  # small queue for only reading recent data
-
+    #rospy.Subscriber("/steering", UInt8, steering_callback, queue_size=1)
     if plotting:
         plt.show()  # block until plots are closed
     else:
