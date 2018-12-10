@@ -5,6 +5,7 @@ import rospy
 import cv2
 import math
 import numpy as np
+from std_msgs.msg import Int16, UInt8, UInt16
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 from sklearn import linear_model
@@ -16,6 +17,8 @@ class image_converter:
   def __init__(self):
     self.image_pub = rospy.Publisher("/image_processing/bin_img",Image, queue_size=1)
     self.output_pub = rospy.Publisher("/image_processing/lines", Image, queue_size=1)
+    self.steering_pub = rospy.Publisher("/steering", UInt8, queue_size=1)
+    self.speed_pub = rospy.Publisher("/speed", Int16, queue_size=1)
 
     self.bridge = CvBridge()
     self.image_sub = rospy.Subscriber("/camera/color/image_raw",Image,self.callback, queue_size=1)
@@ -48,7 +51,25 @@ class image_converter:
     x2 = width
     y1 = (x1 * m + b)
     y2 = (x2 * m + b)
-    return ((y1,x1),(y2,x2))
+    return (np.array([y1,x1]),np.array([y2,x2]))
+
+  def perp(self, a ) :
+    b = np.empty_like(a)
+    b[0] = -a[1]
+    b[1] = a[0]
+    return b
+
+  # line segment a given by endpoints a1, a2
+  # line segment b given by endpoints b1, b2
+  # return 
+  def seg_intersect(self, a1,a2, b1,b2) :
+    da = a2-a1
+    db = b2-b1
+    dp = a1-b1
+    dap = self.perp(da)
+    denom = np.dot( dap, db)
+    num = np.dot( dap, dp )
+    return (num / denom.astype(float))*db + b1
 
   def callback(self,data):
     try:
@@ -62,15 +83,15 @@ class image_converter:
 
     hsv = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)
 
-    lower_white = np.array([0,0,250]) # 0, 40, 150 / 0, 0, 0 / 0, 0, 250
-    upper_white = np.array([30,150,255]) # 18, 80, 255 / 255, 60, 255 / 50, 200, 255
+    lower_white = np.array([20,0,250]) # 0, 40, 150 / 0, 0, 0 / 0, 0, 250
+    upper_white = np.array([40,150,255]) # 18, 80, 255 / 255, 60, 255 / 50, 200, 255
 
     mask = cv2.inRange(hsv, lower_white, upper_white)
     res = cv2.bitwise_and(cv_image, cv_image, mask=mask)
 
     try:
-      #self.image_pub.publish(self.bridge.cv2_to_imgmsg(res, "bgr8"))
-      self.image_pub.publish(self.bridge.cv2_to_imgmsg(cv_image, "bgr8"))
+      self.image_pub.publish(self.bridge.cv2_to_imgmsg(res, "bgr8"))
+      #self.image_pub.publish(self.bridge.cv2_to_imgmsg(cv_image, "bgr8"))
     except CvBridgeError as e:
       print(e)
 
@@ -79,8 +100,16 @@ class image_converter:
     m1, b1 = self.ransac(seg1)
 
     line1 = self.get_line_points(m1, b1, cv_image.shape[1])
+    line2 = (np.array([0, 240]), np.array([640, 240]))
+    intersect = self.seg_intersect(line1[0], line1[1], line2[0], line2[1])
+    intersect = (int(intersect[0][0]), int(intersect[0][1])) 
+    self.steering_pub.publish(90 - ((320 - intersect[0]) / 4))
+    self.speed_pub.publish(120)
+    rospy.sleep(1)
+    print "p"
 
-    cv2.line(cv_image, line1[0], line1[1], (255, 0, 0), 5)
+    cv2.line(cv_image, tuple(line1[0]), tuple(line1[1]), (255, 0, 0), 5)
+    cv2.line(cv_image, (0,240), (640, 240), (255, 0, 0), 5)
     try:
       self.output_pub.publish(self.bridge.cv2_to_imgmsg(cv_image, "bgr8"))
     except CvBridgeError as e:
@@ -88,6 +117,7 @@ class image_converter:
 
 def main(args):
   rospy.init_node('image_converter', anonymous=True)
+
   ic = image_converter()
   try:
     rospy.spin()
