@@ -71,49 +71,58 @@ class image_converter:
     num = np.dot( dap, dp )
     return (num / denom.astype(float))*db + b1
 
+  def clamp(self, num, minv, maxv):
+    return max(min(num, nax), minv)
+
   def callback(self,data):
     try:
       cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
     except CvBridgeError as e:
       print(e)
 
-    #y_end = np.shape(cv_image)[0]
-    #y_start = np.shape(cv_image)[0] * 0.5
-    #cv_image = cv_image[int(y_start):int(y_end), :]
+    y_end = np.shape(cv_image)[0]
+    y_start = np.shape(cv_image)[0] * 0.4
+    cv_image = cv_image[int(y_start):int(y_end), :]
 
     hsv = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)
 
-    lower_white = np.array([20,0,250]) # 0, 40, 150 / 0, 0, 0 / 0, 0, 250
-    upper_white = np.array([40,150,255]) # 18, 80, 255 / 255, 60, 255 / 50, 200, 255
+    lower_white = np.array([0,0,250]) # 0, 40, 150 / 0, 0, 0 / 0, 0, 250
+    upper_white = np.array([80,150,255]) # 18, 80, 255 / 255, 60, 255 / 50, 200, 255
 
     mask = cv2.inRange(hsv, lower_white, upper_white)
     res = cv2.bitwise_and(cv_image, cv_image, mask=mask)
 
     try:
       self.image_pub.publish(self.bridge.cv2_to_imgmsg(res, "bgr8"))
-      #self.image_pub.publish(self.bridge.cv2_to_imgmsg(cv_image, "bgr8"))
     except CvBridgeError as e:
       print(e)
 
-    seg1 = self.find_segments(mask)
-
-    m1, b1 = self.ransac(seg1)
+    try:
+      seg1 = self.find_segments(mask)
+      m1, b1 = self.ransac(seg1)
+    except:
+      print "No lines found"
+      self.speed_pub.publish(0)
+      rospy.sleep(1)
 
     line1 = self.get_line_points(m1, b1, cv_image.shape[1])
-    line2 = (np.array([0, 240]), np.array([640, 240]))
+    line2 = (np.array([0, 220]), np.array([640, 220]))
     intersect = self.seg_intersect(line1[0], line1[1], line2[0], line2[1])
     intersect = (int(intersect[0][0]), int(intersect[0][1])) 
-    self.steering_pub.publish(90 - ((320 - intersect[0]) / 4))
-    self.speed_pub.publish(120)
-    rospy.sleep(1)
-    print "p"
 
     cv2.line(cv_image, tuple(line1[0]), tuple(line1[1]), (255, 0, 0), 5)
-    cv2.line(cv_image, (0,240), (640, 240), (255, 0, 0), 5)
+    cv2.line(cv_image, (0,220), (640, 220), (255, 0, 0), 5)
     try:
       self.output_pub.publish(self.bridge.cv2_to_imgmsg(cv_image, "bgr8"))
     except CvBridgeError as e:
       print(e)
+
+    steering_command = ((320 - intersect[0]) / 4) # maps the distance from center into +-90
+    steering_command = self.clamp(steering_command, -90, 90)
+
+    self.steering_pub.publish(90 - steering_command)
+    self.speed_pub.publish(180)
+    rospy.sleep(0.5) # needs to be adjusted depending on speed for a (nearly) straight line and speed <200 a new steer command every 0.5 seconds is enough
 
 def main(args):
   rospy.init_node('image_converter', anonymous=True)
@@ -123,7 +132,6 @@ def main(args):
     rospy.spin()
   except KeyboardInterrupt:
     print("Shutting down")
-  cv2.destroyAllWindows()
 
 
 if __name__ == '__main__':
