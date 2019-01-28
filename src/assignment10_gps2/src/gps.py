@@ -12,34 +12,36 @@ from nav_msgs.msg import Odometry
 from std_msgs.msg import UInt8
 
 steering_pub = None
-plot = True
+plot = False
 
 # terrible code ahead
 def getClosestPoint(pos, distance, laneID):
 	if laneID == 1:
-		p1 = (1.85, .79)
-		p2 = (4.14, .79)
-		p3 = (1.85, 3.52)
-		p4 = (4.14, 3.52)
-		c1 = (1.92, 2.20) 
-		c2 = (4.14, 2.20)
-		r = 1.27
+		p1 = (1.90, .82)
+		p2 = (4.05, .82)
+		p3 = (1.95, 3.56)
+		p4 = (4.05, 3.52)
+		c1 = (2.00, 2.20) 
+		c2 = (4.05, 2.15)
+		r1 = 1.27
+		r2 = 1.31 
 		# Verwendete Koordinaten entsprechen nicht ganz dem was wir in dem Bild gemessen haben fuehren so aber zu deutlich besseren Ergebnissen
 	if laneID == 2:
-		p1 = (1.85, .47)
-		p2 = (4.14, .47)
-		p3 = (1.85, 3.84)
-		p4 = (4.14, 3.84)
-		c1 = (1.92, 2.20)
-		c2 = (4.14, 2.20)
-		r = 1.43
+		p1 = (1.95, .48)
+		p2 = (4.04, .48)
+		p3 = (1.95, 3.84)
+		p4 = (4.05, 3.84)
+		c1 = (2.00, 2.20)
+		c2 = (4.05, 2.15)
+		r1 = 1.60
+		r2 = 1.65
 	if (pos.x < p1[0]):
 		angle = math.atan((pos.y - c1[1])/(pos.x - c1[0]))
-		diff = distance / (2 * math.pi * r)
+		diff = distance / (2 * math.pi * r1)
 		angle_diff = diff * 2 * math.pi
 		angle_res = angle + angle_diff + math.pi
 		if angle_res < (3 * math.pi / 2):
-			return (c1[0] + r * math.cos(angle_res), c1[1] + r * math.sin(angle_res))
+			return (c1[0] + r1 * math.cos(angle_res), c1[1] + r1 * math.sin(angle_res))
 		else:
 			new_diff = angle_diff - (angle_res - (3 * math.pi / 2))
 			diff = new_diff / angle_diff
@@ -51,27 +53,27 @@ def getClosestPoint(pos, distance, laneID):
 		else:
 			distance = pos.x + distance - c2[0]
 			angle = 3 * math.pi / 2
-			diff = distance / (2 * math.pi * r)
+			diff = distance / (2 * math.pi * r2)
 			angle_diff = diff * 2 * math.pi
 			angle_res = angle + angle_diff
-			return (c2[0] + r * math.cos(angle_res), c2[1] + r * math.sin(angle_res))
+			return (c2[0] + r2 * math.cos(angle_res), c2[1] + r2 * math.sin(angle_res))
 	elif (pos.x < c2[0]) and (pos.y >= c2[1]):
 		if pos.x - distance >= p3[0]:
 			return (pos.x - distance, p3[1])
 		else:
 			distance = c1[0] - (pos.x - distance)
 			angle = math.pi / 2
-			diff = distance / (2 * math.pi * r)
+			diff = distance / (2 * math.pi * r1)
 			angle_diff = diff * 2 * math.pi
 			angle_res = angle + angle_diff
-			return (c1[0] + r * math.cos(angle_res), c1[1] + r * math.sin(angle_res))
+			return (c1[0] + r1 * math.cos(angle_res), c1[1] + r1 * math.sin(angle_res))
 	elif (pos.x <= 6.00):
 		angle = math.atan((pos.y - c2[1])/(pos.x - c2[0]))
-		diff = distance / (2 * math.pi * r)
+		diff = distance / (2 * math.pi * r2)
 		angle_diff = diff * 2 * math.pi
 		angle_res = angle + angle_diff
 		if angle_res < (math.pi / 2):
-			return (c2[0] + r * math.cos(angle_res), c2[1] + r * math.sin(angle_res))
+			return (c2[0] + r2 * math.cos(angle_res), c2[1] + r2 * math.sin(angle_res))
 		else:
 			new_diff = angle_diff - (angle_res - (math.pi / 2))
 			diff = new_diff / angle_diff
@@ -110,26 +112,26 @@ def prepareVisualization():
 		ax = plt.gca()
 	ax.cla()
 	theta1, theta2 = angle, angle + 180
-	w1 = Wedge((1.85, 2.15), 1.21, theta1, theta2, fill=False)
-	w2 = Wedge((4.14, 2.15), 1.21, theta2, theta1, fill=False)
-	w3 = Wedge((1.85, 2.15), 1.84, theta1, theta2, fill=False)
-	w4 = Wedge((4.14, 2.15), 1.84, theta2, theta1, fill=False)
-	w5 = Wedge((1.85, 2.15), 1.37, theta1, theta2, fill=False, color='b')
-	w6 = Wedge((4.14, 2.15), 1.37, theta2, theta1, fill=False, color='b')
-	w7 = Wedge((1.85, 2.15), 1.69, theta1, theta2, fill=False, color='b')
-	w8 = Wedge((4.14, 2.15), 1.69, theta2, theta1, fill=False, color='b')
+	w1 = Wedge((1.95, 2.15), 1.20, theta1, theta2, fill=False)
+	w2 = Wedge((4.05, 2.15), 1.20, theta2, theta1, fill=False)
+	w3 = Wedge((1.95, 2.15), 1.84, theta1, theta2, fill=False)
+	w4 = Wedge((4.05, 2.15), 1.84, theta2, theta1, fill=False)
+	w5 = Wedge((1.95, 2.15), 1.36, theta1, theta2, fill=False, color='b')
+	w6 = Wedge((4.05, 2.15), 1.36, theta2, theta1, fill=False, color='b')
+	w7 = Wedge((1.95, 2.15), 1.68, theta1, theta2, fill=False, color='b')
+	w8 = Wedge((4.05, 2.15), 1.68, theta2, theta1, fill=False, color='b')
 	for wedge in [w1, w2, w3, w4, w5, w6, w7, w8]:
 		ax.add_artist(wedge)
 	ax.set_xlim([0.,6.00])
 	ax.set_ylim([0.,4.30])
-	ax.plot([1.85,4.14], [.94, .94], color='k')
-	ax.plot([1.85,4.14], [.31, .31], color='k')
-	ax.plot([1.85,4.14], [3.36, 3.36], color='k')
-	ax.plot([1.85,4.14], [3.99, 3.99], color='k')
-	ax.plot([1.85,4.14], [.46, .46], color='b')
-	ax.plot([1.85,4.14], [3.84, 3.84], color='b')
-	ax.plot([1.85,4.14], [.78, .78], color='b')
-	ax.plot([1.85,4.14], [3.52, 3.52], color='b')
+	ax.plot([1.95,4.05], [.95, .95], color='k')
+	ax.plot([1.95,4.05], [.31, .31], color='k')
+	ax.plot([1.95,4.05], [3.36, 3.36], color='k')
+	ax.plot([1.95,4.05], [4.00, 4.00], color='k')
+	ax.plot([1.95,4.05], [.46, .46], color='b')
+	ax.plot([1.95,4.05], [3.84, 3.84], color='b')
+	ax.plot([1.95,4.05], [.78, .78], color='b')
+	ax.plot([1.95,4.05], [3.52, 3.52], color='b')
 
 def main(args):
 	global fix, ax
