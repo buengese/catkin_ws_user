@@ -12,7 +12,7 @@ from nav_msgs.msg import Odometry
 from std_msgs.msg import UInt8
 
 steering_pub = None
-plot = False
+plot = True
 
 laneID = 1
 
@@ -139,7 +139,7 @@ def main(args):
 	rospy.init_node("navigation", anonymous=True);
 	fig, ax = plt.subplots()
 	steering_pub = rospy.Publisher("/steering", UInt8, queue_size=100, latch=True)
-	pos_sub = rospy.Subscriber("/localization/odom/7", Odometry, on_odom, queue_size=1)
+	pos_sub = rospy.Subscriber("/localization/odom/8", Odometry, on_odom, queue_size=1)
 	lane_sub = rospy.Subscriber("/lane", UInt8, on_lane, queue_size=1)
 	if plot:
 		plt.show()
